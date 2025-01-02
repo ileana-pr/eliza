@@ -1,0 +1,23 @@
+{
+  "name": "test-daora",
+  "version": "1.0.0",
+  "description": "Test implementation of DAOra with DAO Forum plugin",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@eliza/core": "workspace:*",
+    "@eliza/plugin-dao-forum": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.0.0"
+  }
+}

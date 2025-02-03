@@ -15,6 +15,7 @@ import { TwitterClientInterface } from "@elizaos/client-twitter";
 import { AlexaClientInterface } from "@elizaos/client-alexa";
 import { MongoDBDatabaseAdapter } from "@elizaos/adapter-mongodb";
 import { DevaClientInterface } from "@elizaos/client-deva";
+import createForumAnalyzer from "@elizaos/plugin-forum-analyzer";
 
 import { FarcasterClientInterface } from "@elizaos/client-farcaster";
 import { OmniflixPlugin } from "@elizaos/plugin-omniflix";
@@ -1294,6 +1295,23 @@ export async function createAgent(
             getSecret(character, "ARBITRAGE_FLASHBOTS_RELAY_SIGNING_KEY") &&
             getSecret(character, "ARBITRAGE_BUNDLE_EXECUTOR_ADDRESS")
                 ? arbitragePlugin
+                : null,
+            getSecret(character, "DISCOURSE_FORUM_URL") ||
+            getSecret(character, "DISCORD_API_TOKEN") ||
+            getSecret(character, "COMMONWEALTH_SPACE")
+                ? createForumAnalyzer({
+                    platforms: {
+                        discourse: getSecret(character, "DISCOURSE_FORUM_URL") ? {
+                            url: getSecret(character, "DISCOURSE_FORUM_URL")
+                        } : undefined,
+                        discord: getSecret(character, "DISCORD_API_TOKEN") ? {
+                            token: getSecret(character, "DISCORD_API_TOKEN")
+                        } : undefined,
+                        commonwealth: getSecret(character, "COMMONWEALTH_SPACE") ? {
+                            space: getSecret(character, "COMMONWEALTH_SPACE")
+                        } : undefined
+                    }
+                })
                 : null,
         ]
             .flat()

@@ -7,14 +7,18 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     }
   },
+  "files": ["dist"],
   "scripts": {
-    "build": "rimraf dist && tsc && tsup src/index.ts --format esm --sourcemap",
+    "build": "tsup --format esm --dts",
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "clean": "rimraf dist",
@@ -22,14 +26,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/client-twitter": "workspace:*",
     "axios": "^1.6.5",
     "cheerio": "^1.0.0-rc.12",
     "discord.js": "^14.14.1",
     "natural": "^6.10.0"
-  },
-  "optionalDependencies": {
-    "puppeteer": "^21.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -45,7 +45,7 @@
     "@typescript-eslint/parser": "^6.18.1"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "whatwg-url": "7.1.0"
   },
   "keywords": [
     "dao",

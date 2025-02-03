@@ -11,7 +11,15 @@
                 "platforms": {
                     "discourse": {
                         "usePublicDiscourse": true,
-                        "baseUrl": "${DISCOURSE_FORUM_URL}"
+                        "usePublicScraping": true,
+                        "baseUrl": "https://forum.decentraland.org",
+                        "fetchOptions": {
+                            "maxPosts": 100,
+                            "includeReplies": true,
+                            "fetchFullThread": true,
+                            "cacheTimeout": 300,
+                            "scrapingDelay": 500
+                        }
                     },
                     "discord": {
                         "token": "${DISCORD_API_TOKEN}",
@@ -24,10 +32,15 @@
                     }
                 },
                 "analysisOptions": {
-                    "minEngagementThreshold": 0.3,
-                    "proposalThreshold": 0.7,
+                    "minEngagementThreshold": 0.2,
+                    "proposalThreshold": 0.8,
                     "includeSentiment": true,
-                    "includeConsensus": true
+                    "includeConsensus": true,
+                    "contextDepth": 2,
+                    "minConfidence": 0.7,
+                    "maxAgeDays": 30,
+                    "retryAttempts": 3,
+                    "retryDelay": 1000
                 }
             }
         }

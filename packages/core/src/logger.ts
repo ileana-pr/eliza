@@ -26,13 +26,22 @@ const createStream = () => {
         colorize: true,
         translateTime: "yyyy-mm-dd HH:MM:ss",
         ignore: "pid,hostname",
+        messageFormat: (log, messageKey) => {
+            const source = log.plugin || log.source || '';
+            const action = log.action || '';
+            const message = log[messageKey];
+            return `[${source}${action ? ':' + action : ''}] ${message}`;
+        },
+        customPrettifiers: {
+            source: (source) => `[${source}]`,
+            action: (action) => `[${action}]`
+        }
     });
 };
 
-const defaultLevel = process?.env?.DEFAULT_LOG_LEVEL || "info";
-
+// Always use debug level for detailed logging
 const options = {
-    level: defaultLevel,
+    level: 'debug',
     customLevels,
     hooks: {
         logMethod(

@@ -7,10 +7,23 @@ export interface ForumPost {
   timestamp: Date;
   url: string;
   category?: string;
+  tags?: string[];
   replies?: number;
   views?: number;
+  lastActivity?: Date;
   reactions?: {
     [key: string]: number;
+  };
+  threadReplies?: Array<{
+    author: string;
+    content: string;
+    timestamp: Date;
+  }>;
+  metadata?: {
+    isSticky?: boolean;
+    isLocked?: boolean;
+    participantCount?: number;
+    lastEditedAt?: Date;
   };
 }
 

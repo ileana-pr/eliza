@@ -12,7 +12,6 @@ import {
 import { DiscourseClient } from "../platforms/discourse";
 import { DiscordClient } from "../platforms/discord";
 import { CommonwealthClient } from "../platforms/commonwealth";
-import { TwitterClientInterface } from "@elizaos/client-twitter";
 import { analyzeDiscussion } from "../analysis";
 import { ProposalGenerator } from "../proposal/generator";
 import { ProposalWorkflow } from "../proposal/workflow";

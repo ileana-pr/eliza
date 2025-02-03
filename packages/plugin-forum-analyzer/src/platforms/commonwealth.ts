@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ForumPost } from '../types';
+import { elizaLogger } from '@elizaos/core';
 
 interface CommonwealthConfig {
   url: string;
@@ -24,6 +25,7 @@ export class CommonwealthClient {
   constructor(config: CommonwealthConfig) {
     this.baseUrl = config.url.endsWith("/") ? config.url.slice(0, -1) : config.url;
     this.apiKey = config.apiKey;
+    elizaLogger.info('[COMMONWEALTH] Initializing client with URL:', this.baseUrl);
   }
 
   async getPosts(options: {
@@ -43,7 +45,10 @@ export class CommonwealthClient {
       };
       if (this.apiKey) {
         headers["Authorization"] = `Bearer ${this.apiKey}`;
+        elizaLogger.debug('[COMMONWEALTH] Using API key for authentication');
       }
+
+      elizaLogger.debug('[COMMONWEALTH] Fetching threads with options:', { timeframe, category, limit });
 
       // Get latest threads
       const response = await axios.get(`${this.baseUrl}/api/threads`, {
@@ -59,7 +64,9 @@ export class CommonwealthClient {
       const threads = response.data.result as CommonwealthThread[];
       const timeframeCutoff = this.getTimeframeCutoff(timeframe);
 
-      return threads
+      elizaLogger.debug(`[COMMONWEALTH] Retrieved ${threads.length} threads`);
+
+      const filteredPosts = threads
         .filter((thread) => new Date(thread.created_at) >= timeframeCutoff)
         .slice(0, limit)
         .map((thread) => ({
@@ -75,8 +82,11 @@ export class CommonwealthClient {
             total: thread.reaction_count,
           },
         }));
+
+      elizaLogger.info(`[COMMONWEALTH] Successfully processed ${filteredPosts.length} posts`);
+      return filteredPosts;
     } catch (error) {
-      console.error("Error fetching Commonwealth posts:", error);
+      elizaLogger.error("[COMMONWEALTH] Error fetching Commonwealth posts:", error);
       throw error;
     }
   }

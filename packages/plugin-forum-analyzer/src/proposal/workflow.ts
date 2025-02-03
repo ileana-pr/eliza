@@ -7,8 +7,13 @@ export interface ProposalWorkflowConfig {
   temperatureCheckDuration: number; // in days
   discussionPeriod: number; // in days
   votingPeriod: number; // in days
-  minimumQuorum: number; // 0-1 scale
-  approvalThreshold: number; // 0-1 scale
+  minimumQuorum: number; // 0-1 range
+  approvalThreshold: number; // 0-1 range
+  governanceConfig?: {
+    criticalProposalThreshold: number; // Threshold for critical governance changes (0-1)
+    extendedVotingPeriod: number; // in days, for critical proposals
+    highQuorum: number; // 0-1 range, for critical proposals
+  };
 }
 
 export interface ProposalVote {
@@ -51,12 +56,17 @@ export interface ProposalWorkflowState {
   };
 }
 
-const DEFAULT_CONFIG: ProposalWorkflowConfig = {
-  temperatureCheckDuration: 3, // 3 days
-  discussionPeriod: 7, // 7 days
-  votingPeriod: 5, // 5 days
-  minimumQuorum: 0.1, // 10% of total voting power
-  approvalThreshold: 0.5, // 50% of votes must be in favor
+export const DEFAULT_CONFIG: ProposalWorkflowConfig = {
+  temperatureCheckDuration: 3,
+  discussionPeriod: 5,
+  votingPeriod: 7,
+  minimumQuorum: 0.1, // 10%
+  approvalThreshold: 0.5, // 50%
+  governanceConfig: {
+    criticalProposalThreshold: 0.8,
+    extendedVotingPeriod: 14,
+    highQuorum: 0.2 // 20%
+  }
 };
 
 export class ProposalWorkflow {
@@ -67,20 +77,31 @@ export class ProposalWorkflow {
     proposal: ProposalDraft,
     config: Partial<ProposalWorkflowConfig> = {}
   ) {
+    elizaLogger.info('[ProposalWorkflow] Initializing workflow');
+    elizaLogger.debug('[ProposalWorkflow] Configuration:', { ...config });
+    
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.state = {
       stage: 'draft',
       proposal,
     };
+    
+    elizaLogger.info('[ProposalWorkflow] Workflow initialized in draft stage');
   }
 
   public async startTemperatureCheck(): Promise<void> {
+    elizaLogger.info('[ProposalWorkflow] Attempting to start temperature check phase');
+    
     if (this.state.stage !== 'draft') {
-      throw new Error('Temperature check can only be started from draft stage');
+      const error = 'Temperature check can only be started from draft stage';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`, { currentStage: this.state.stage });
+      throw new Error(error);
     }
 
     if (!this.state.proposal.poll) {
-      throw new Error('Proposal does not have a temperature check poll configured');
+      const error = 'Proposal does not have a temperature check poll configured';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`);
+      throw new Error(error);
     }
 
     const endTime = new Date();
@@ -96,54 +117,85 @@ export class ProposalWorkflow {
       },
     };
 
-    elizaLogger.info('[ProposalWorkflow] Started temperature check phase');
+    elizaLogger.info('[ProposalWorkflow] Started temperature check phase', {
+      duration: this.config.temperatureCheckDuration,
+      endTime
+    });
   }
 
   public async submitTemperatureCheckVote(vote: ProposalVote): Promise<void> {
-    if (this.state.stage !== 'temperature_check' || !this.state.temperatureCheck) {
-      throw new Error('Temperature check is not active');
+    elizaLogger.info('[ProposalWorkflow] Processing temperature check vote');
+    elizaLogger.debug('[ProposalWorkflow] Vote details:', { 
+      voter: vote.voter,
+      choice: vote.choice,
+      weight: vote.weight
+    });
+
+    if (this.state.stage !== 'temperature_check') {
+      const error = 'Votes can only be submitted during temperature check phase';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`, { currentStage: this.state.stage });
+      throw new Error(error);
     }
 
-    if (new Date() > this.state.temperatureCheck.endTime) {
-      throw new Error('Temperature check period has ended');
+    if (!this.state.temperatureCheck) {
+      const error = 'Temperature check state not initialized';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`);
+      throw new Error(error);
     }
 
     this.state.temperatureCheck.votes.push(vote);
-    elizaLogger.info('[ProposalWorkflow] Recorded temperature check vote');
+    elizaLogger.info('[ProposalWorkflow] Vote recorded successfully', {
+      totalVotes: this.state.temperatureCheck.votes.length
+    });
   }
 
   public async finalizeTemperatureCheck(): Promise<void> {
-    if (this.state.stage !== 'temperature_check' || !this.state.temperatureCheck) {
-      throw new Error('Temperature check is not active');
+    elizaLogger.info('[ProposalWorkflow] Attempting to finalize temperature check');
+    
+    if (this.state.stage !== 'temperature_check') {
+      const error = 'Can only finalize from temperature check phase';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`, { currentStage: this.state.stage });
+      throw new Error(error);
+    }
+
+    if (!this.state.temperatureCheck) {
+      const error = 'Temperature check state not initialized';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`);
+      throw new Error(error);
     }
 
     const { votes } = this.state.temperatureCheck;
-    const totalWeight = votes.reduce((sum, vote) => sum + vote.weight, 0);
+    const totalVotes = votes.length;
+    
+    if (totalVotes === 0) {
+      elizaLogger.warn('[ProposalWorkflow] No votes received during temperature check');
+    }
 
     const result = {
-      support: votes.filter(v => v.choice === 'Strongly Support' || v.choice === 'Support with Minor Changes')
-        .reduce((sum, vote) => sum + vote.weight, 0) / totalWeight,
-      opposition: votes.filter(v => v.choice === 'Do Not Support')
-        .reduce((sum, vote) => sum + vote.weight, 0) / totalWeight,
-      needsDiscussion: votes.filter(v => v.choice === 'Need More Discussion')
-        .reduce((sum, vote) => sum + vote.weight, 0) / totalWeight,
+      support: votes.filter(v => v.choice === 'Strongly Support' || v.choice === 'Support with Minor Changes').length / totalVotes,
+      opposition: votes.filter(v => v.choice === 'Do Not Support').length / totalVotes,
+      needsDiscussion: votes.filter(v => v.choice === 'Need More Discussion').length / totalVotes,
     };
 
     this.state.temperatureCheck.result = result;
+    this.state.stage = result.support > 0.5 ? 'discussion' : 'rejected';
 
-    // Determine next stage based on results
-    if (result.support > 0.5) {
-      await this.startDiscussion();
-    } else if (result.needsDiscussion > 0.3) {
-      this.state.stage = 'draft';
-      elizaLogger.info('[ProposalWorkflow] Proposal returned to draft for more discussion');
-    } else {
-      this.state.stage = 'rejected';
-      elizaLogger.info('[ProposalWorkflow] Proposal rejected at temperature check');
-    }
+    elizaLogger.info('[ProposalWorkflow] Temperature check finalized', {
+      result,
+      newStage: this.state.stage,
+      totalVotes
+    });
   }
 
   public async startDiscussion(): Promise<void> {
+    elizaLogger.info('[ProposalWorkflow] Attempting to start discussion phase');
+    
+    if (this.state.stage !== 'temperature_check') {
+      const error = 'Discussion can only be started after temperature check';
+      elizaLogger.error(`[ProposalWorkflow] ${error}`, { currentStage: this.state.stage });
+      throw new Error(error);
+    }
+
     const endTime = new Date();
     endTime.setDate(endTime.getDate() + this.config.discussionPeriod);
 
@@ -156,7 +208,10 @@ export class ProposalWorkflow {
       },
     };
 
-    elizaLogger.info('[ProposalWorkflow] Started discussion phase');
+    elizaLogger.info('[ProposalWorkflow] Started discussion phase', {
+      duration: this.config.discussionPeriod,
+      endTime
+    });
   }
 
   public async addDiscussionComment(author: string, content: string): Promise<void> {

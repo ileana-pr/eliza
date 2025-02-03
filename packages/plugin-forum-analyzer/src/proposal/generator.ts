@@ -53,15 +53,25 @@ const DEFAULT_OPTIONS: ProposalGeneratorOptions = {
 
 export class ProposalGenerator {
   private generateAbstract(analysis: DiscussionAnalysis): ProposalSection {
-    const { keyPoints } = analysis;
+    elizaLogger.debug('[ProposalGenerator] Generating abstract section');
+    const { keyPoints, proposalPotential } = analysis;
     
     const content = `
-This proposal addresses key community points based on discussions.
+This governance proposal addresses key community points based on recent discussions.
 
 Key Points:
 ${keyPoints.map(point => `- ${point}`).join('\n')}
+
+Governance Relevance: ${Math.round(proposalPotential.governanceRelevance * 100)}%
+Community Consensus: ${Math.round(proposalPotential.consensus.level * 100)}%
     `.trim();
 
+    elizaLogger.debug('[ProposalGenerator] Generated abstract with key points:', { 
+      count: keyPoints.length,
+      governanceRelevance: proposalPotential.governanceRelevance,
+      consensusLevel: proposalPotential.consensus.level
+    });
+    
     return {
       title: 'Abstract',
       content,
@@ -70,19 +80,32 @@ ${keyPoints.map(point => `- ${point}`).join('\n')}
   }
 
   private generateMotivation(analysis: DiscussionAnalysis): ProposalSection {
-    const { perspectives, consensus, sentiment } = analysis;
+    elizaLogger.debug('[ProposalGenerator] Generating motivation section');
+    const { proposalPotential, sentiment } = analysis;
+    const { consensus } = proposalPotential;
     
     const content = `
 Background:
-The community has expressed ${sentiment.label} sentiment regarding these topics, 
+The community has expressed ${sentiment.label} sentiment regarding these governance topics, 
 with a consensus level of ${Math.round(consensus.level * 100)}%.
 
 Community Perspectives:
-${perspectives.map(perspective => `- ${perspective}`).join('\n')}
+${proposalPotential.keyPoints.map(point => `- ${point}`).join('\n')}
 
 ${consensus.majorityOpinion ? `Majority Opinion: ${consensus.majorityOpinion}` : ''}
 ${consensus.dissenting ? `\nDissenting Views: ${consensus.dissenting}` : ''}
+
+Governance Impact:
+This proposal has been identified as having significant governance implications with a 
+relevance score of ${Math.round(proposalPotential.governanceRelevance * 100)}%.
     `.trim();
+
+    elizaLogger.debug('[ProposalGenerator] Generated motivation section', {
+      keyPoints: proposalPotential.keyPoints.length,
+      consensusLevel: consensus.level,
+      sentiment: sentiment.label,
+      governanceRelevance: proposalPotential.governanceRelevance
+    });
 
     return {
       title: 'Motivation',
@@ -92,18 +115,19 @@ ${consensus.dissenting ? `\nDissenting Views: ${consensus.dissenting}` : ''}
   }
 
   private generateSpecification(analysis: DiscussionAnalysis): ProposalSection {
-    const { suggestedSolutions, proposalPotential } = analysis;
+    const { proposalPotential } = analysis;
     
     const content = `
-Proposed Changes:
-${suggestedSolutions.map((solution, index) => `${index + 1}. ${solution}`).join('\n')}
+Proposed Governance Changes:
+${proposalPotential.keyPoints.map((point, index) => `${index + 1}. ${point}`).join('\n')}
 
 Implementation Approach:
 ${this.generateImplementationSteps(analysis)}
 
-Technical Considerations:
-- Impact Level: ${proposalPotential.type === 'technical' ? 'High' : 'Medium'}
+Governance Considerations:
+- Impact Level: ${this.getImpactLevel(proposalPotential.governanceRelevance)}
 - Required Changes: ${this.generateRequiredChanges(analysis)}
+- Voting Parameters: ${this.generateVotingParameters(analysis)}
 ${this.generateBudgetEstimate(analysis)}
     `.trim();
 
@@ -211,90 +235,96 @@ Budget Estimate:
     return metrics.map(metric => `- ${metric}`).join('\n');
   }
 
+  private getImpactLevel(governanceRelevance: number): string {
+    if (governanceRelevance > 0.8) return 'Critical - Major governance changes';
+    if (governanceRelevance > 0.6) return 'High - Significant governance updates';
+    if (governanceRelevance > 0.4) return 'Medium - Moderate governance changes';
+    return 'Low - Minor governance adjustments';
+  }
+
+  private generateVotingParameters(analysis: DiscussionAnalysis): string {
+    const { proposalPotential } = analysis;
+    
+    // Adjust voting parameters based on governance relevance
+    const votingPeriod = proposalPotential.governanceRelevance > 0.7 ? '7 days' : '5 days';
+    const quorum = proposalPotential.governanceRelevance > 0.7 ? '20%' : '10%';
+    
+    return `
+- Voting Period: ${votingPeriod}
+- Quorum Requirement: ${quorum}
+- Approval Threshold: >50% Yes votes
+    `.trim();
+  }
+
   async generateProposal(
     analysis: DiscussionAnalysis,
-    options: {
-      includeTemperatureCheck?: boolean;
-      pollDuration?: number;
-      minimumParticipationThreshold?: number;
-    } = {}
+    options: ProposalGeneratorOptions = {}
   ): Promise<Proposal> {
-    const {
-      includeTemperatureCheck = true,
-      pollDuration = 7,
-      minimumParticipationThreshold = 0.1,
-    } = options;
+    elizaLogger.info('[ProposalGenerator] Starting proposal generation');
+    elizaLogger.debug('[ProposalGenerator] Generation options:', options);
 
-    const sections: ProposalSection[] = [];
+    try {
+      const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
+      const title = this.generateTitle(analysis);
+      elizaLogger.debug('[ProposalGenerator] Generated title:', title);
 
-    // Generate summary section
-    if (analysis.summary) {
-      sections.push({
-        type: "summary",
-        title: "Summary",
-        content: analysis.summary,
-      });
-    }
+      const sections: ProposalSection[] = [];
+      
+      // Generate each section
+      elizaLogger.debug('[ProposalGenerator] Generating proposal sections');
+      sections.push(this.generateAbstract(analysis));
+      sections.push(this.generateMotivation(analysis));
+      sections.push(this.generateSpecification(analysis));
+      
+      // Generate temperature check if needed
+      let temperatureCheck;
+      if (mergedOptions.includeTemperatureCheck) {
+        elizaLogger.debug('[ProposalGenerator] Generating temperature check poll');
+        temperatureCheck = this.generateTemperatureCheckPoll(analysis, mergedOptions);
+      }
 
-    // Generate motivation section
-    sections.push({
-      type: "motivation",
-      title: "Motivation",
-      content: this.generateMotivationSection(analysis),
-    });
-
-    // Generate specification section
-    sections.push({
-      type: "specification",
-      title: "Specification",
-      content: this.generateSpecificationSection(analysis),
-    });
-
-    // Generate rationale section
-    sections.push({
-      type: "rationale",
-      title: "Rationale",
-      content: this.generateRationaleSection(analysis),
-    });
-
-    // Generate risks section
-    sections.push({
-      type: "risks",
-      title: "Risks and Considerations",
-      content: this.generateRisksSection(),
-    });
-
-    const proposal: Proposal = {
-      id: `PROP-${Date.now()}`,
-      title: this.generateTitle(analysis),
-      description: analysis.summary || "",
-      sections,
-      author: "DAOra Forum Analyzer",
-      timestamp: new Date(),
-      status: "draft",
-      tags: analysis.keywords || [],
-      sourceDiscussions: [analysis.postId],
-      estimatedImpact: this.calculateImpact(analysis),
-    };
-
-    // Add temperature check poll if requested
-    if (includeTemperatureCheck) {
-      proposal.poll = {
-        question: "Do you support this proposal moving forward?",
-        options: [
-          "Strongly Support",
-          "Support with Minor Changes",
-          "Need More Discussion",
-          "Do Not Support",
-        ],
-        duration: pollDuration * 24 * 60 * 60, // Convert days to seconds
-        minParticipation: minimumParticipationThreshold,
-        startDate: new Date(),
-        endDate: new Date(Date.now() + pollDuration * 24 * 60 * 60 * 1000),
+      const proposal: Proposal = {
+        id: `PROP-${Date.now()}`,
+        title,
+        description: analysis.summary || '',
+        sections,
+        author: analysis.post.author || 'Unknown',
+        timestamp: new Date(),
+        status: 'draft',
+        tags: analysis.keywords || [],
+        sourceDiscussions: [analysis.postId],
+        estimatedImpact: {
+          technical: 0,
+          social: 0,
+          economic: 0
+        },
+        temperatureCheck,
+        metadata: {
+          source: analysis.post.url,
+          platform: analysis.platform,
+          timestamp: new Date(),
+          author: analysis.post.author,
+          tags: analysis.keywords || [],
+          engagement: {
+            participationRate: analysis.engagement?.participationRate || 0,
+            uniqueParticipants: analysis.engagement?.uniqueParticipants || 0,
+            totalInteractions: analysis.engagement?.totalInteractions || 0
+          }
+        }
       };
-    }
 
-    return proposal;
+      elizaLogger.info('[ProposalGenerator] Successfully generated proposal');
+      elizaLogger.debug('[ProposalGenerator] Proposal details:', {
+        title,
+        sectionCount: sections.length,
+        hasTemperatureCheck: !!temperatureCheck
+      });
+
+      return proposal;
+    } catch (error) {
+      elizaLogger.error('[ProposalGenerator] Error generating proposal:', error);
+      throw error;
+    }
   }
 
   private generateTitle(analysis: DiscussionAnalysis): string {

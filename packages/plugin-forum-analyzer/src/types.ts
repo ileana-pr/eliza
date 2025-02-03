@@ -1,3 +1,5 @@
+import { TemperatureCheckPoll } from './proposal/generator';
+
 export interface ForumPost {
   id: string;
   platform: string;
@@ -32,30 +34,20 @@ export interface DiscussionAnalysis {
   platform: string;
   post: {
     title?: string;
+    url?: string;
+    author?: string;
   };
-  topics?: string[];
-  stakeholders?: string[];
-  proposalPotential: {
-    score: number;
-    confidence: number;
-    reasons: string[];
-    type?: 'technical' | 'governance' | 'treasury' | 'social' | 'other';
-  };
+  topics: string[];
+  stakeholders: string[];
+  proposalPotential: ProposalPotential;
   sentiment?: {
     score: number;
     magnitude: number;
-    label?: 'positive' | 'negative' | 'neutral';
+    label: 'positive' | 'negative' | 'neutral';
   };
   keywords?: string[];
   summary?: string;
   keyPoints?: string[];
-  perspectives?: string[];
-  consensus?: {
-    level: number;
-    majorityOpinion?: string;
-    dissenting?: string;
-  };
-  suggestedSolutions?: string[];
   engagement?: {
     participationRate: number;
     uniqueParticipants: number;
@@ -101,6 +93,19 @@ export interface Proposal {
     economic: number;
   };
   poll?: ProposalPoll;
+  temperatureCheck?: TemperatureCheckPoll;
+  metadata?: {
+    source: string;
+    platform: string;
+    timestamp: Date;
+    author: string;
+    tags: string[];
+    engagement: {
+      participationRate: number;
+      uniqueParticipants: number;
+      totalInteractions: number;
+    };
+  };
 }
 
 export interface ProposalSection {
@@ -145,4 +150,112 @@ export interface PluginContext {
   name: string;
   version: string;
   config?: Record<string, unknown>;
+}
+
+export interface DiscourseConfig {
+  url: string;
+  apiKey?: string;
+  usePublicScraping?: boolean;
+  fetchOptions?: {
+    maxPosts?: number;
+    includeReplies?: boolean;
+    fetchFullThread?: boolean;
+    cacheTimeout?: number;
+    scrapingDelay?: number;
+  };
+}
+
+export interface AnalysisOptions {
+    proposalThreshold?: number;
+    sentimentAnalysis?: boolean;
+    keywordExtraction?: boolean;
+}
+
+export interface ProposalPotential {
+    score: number;
+    confidence: number;
+    type: 'governance' | 'treasury' | 'technical' | 'social' | 'other';
+    reasons: string[];
+    keyPoints: string[];
+    consensus: {
+        level: number;
+        majorityOpinion?: string;
+        dissenting?: string;
+    };
+    governanceRelevance: number;
+}
+
+export interface Sentiment {
+    score: number;
+    magnitude: number;
+    label: 'positive' | 'negative' | 'neutral';
+}
+
+export interface ProposalWorkflowState {
+    stage: ProposalStage;
+    proposal: Proposal;
+    temperatureCheck?: {
+        poll: TemperatureCheckPoll;
+        startTime: Date;
+        endTime: Date;
+        votes: ProposalVote[];
+        governanceMetrics?: {
+            criticalProposal: boolean;
+            extendedDuration: boolean;
+            highQuorum: boolean;
+        };
+    };
+    discussion?: {
+        startTime: Date;
+        endTime: Date;
+        threads: {
+            id: string;
+            title: string;
+            url: string;
+            replies: number;
+            sentiment: 'positive' | 'negative' | 'neutral';
+        }[];
+        governanceMetrics?: {
+            criticalDiscussion: boolean;
+            extendedPeriod: boolean;
+            requiredFrameworkChanges: boolean;
+        };
+    };
+    voting?: {
+        startTime: Date;
+        endTime: Date;
+        quorum: number;
+        approvalThreshold: number;
+        votes: ProposalVote[];
+        governanceMetrics?: {
+            criticalVoting: boolean;
+            extendedPeriod: boolean;
+            highQuorum: boolean;
+            frameworkChangeRequired: boolean;
+        };
+    };
+}
+
+export type ProposalStage = 
+    | 'draft'
+    | 'temperature_check'
+    | 'discussion'
+    | 'final_proposal'
+    | 'voting'
+    | 'executed'
+    | 'rejected';
+
+export interface ProposalVote {
+    voter: string;
+    choice: string;
+    weight: number;
+    timestamp: Date;
+    metadata?: {
+        delegatedFrom?: string[];
+        votingPower?: number;
+        governanceTokens?: {
+            symbol: string;
+            amount: number;
+        }[];
+    };
 } 

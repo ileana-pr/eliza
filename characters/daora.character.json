@@ -10,9 +10,8 @@
             "forum-analyzer": {
                 "platforms": {
                     "discourse": {
-                        "usePublicDiscourse": true,
+                        "url": "https://forum.decentraland.org",
                         "usePublicScraping": true,
-                        "baseUrl": "https://forum.decentraland.org",
                         "fetchOptions": {
                             "maxPosts": 100,
                             "includeReplies": true,
@@ -32,15 +31,9 @@
                     }
                 },
                 "analysisOptions": {
-                    "minEngagementThreshold": 0.2,
                     "proposalThreshold": 0.8,
-                    "includeSentiment": true,
-                    "includeConsensus": true,
-                    "contextDepth": 2,
-                    "minConfidence": 0.7,
-                    "maxAgeDays": 30,
-                    "retryAttempts": 3,
-                    "retryDelay": 1000
+                    "sentimentAnalysis": true,
+                    "keywordExtraction": true
                 }
             }
         }

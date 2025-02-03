@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits, TextChannel, Message } from "discord.js";
 import { ForumPost } from "../types";
+import { elizaLogger } from '@elizaos/core';
 
 interface DiscordConfig {
   token: string;
@@ -19,6 +20,7 @@ export class DiscordClient {
         GatewayIntentBits.MessageContent,
       ],
     });
+    elizaLogger.info('[DISCORD] Initializing client...');
     this.client.login(config.token);
   }
 
@@ -43,7 +45,7 @@ export class DiscordClient {
         try {
           const channel = await this.client.channels.fetch(channelId);
           if (!channel || !(channel instanceof TextChannel)) {
-            console.warn(`Channel ${channelId} not found or not a text channel`);
+            elizaLogger.warn(`[DISCORD] Channel ${channelId} not found or not a text channel`);
             continue;
           }
 
@@ -65,14 +67,14 @@ export class DiscordClient {
             break;
           }
         } catch (error) {
-          console.error(`Error fetching messages from channel ${channelId}:`, error);
+          elizaLogger.error(`[DISCORD] Error fetching messages from channel ${channelId}:`, error);
           continue;
         }
       }
 
       return posts;
     } catch (error) {
-      console.error("Error fetching Discord posts:", error);
+      elizaLogger.error("[DISCORD] Error fetching Discord posts:", error);
       throw error;
     } finally {
       // Don't destroy the client as it might be reused

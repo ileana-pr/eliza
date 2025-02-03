@@ -26,6 +26,7 @@ export interface ForumPost {
     isLocked?: boolean;
     participantCount?: number;
     lastEditedAt?: Date;
+    lastActivity?: Date;
   };
 }
 

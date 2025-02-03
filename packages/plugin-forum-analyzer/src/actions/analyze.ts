@@ -3,7 +3,7 @@ import {
     type Memory,
     type State,
     type HandlerCallback,
-    type IAgentRuntime,
+    AgentRuntime,
     ModelClass,
     elizaLogger,
     composeContext,
@@ -20,7 +20,13 @@ import type { ForumPost, DiscussionAnalysis, ForumAnalyzerConfig, DiscourseConfi
 
 // Helper functions
 function getPlatformsFromState(state: State): ForumAnalyzerConfig {
-    return state.plugins?.["forum-analyzer"] || { platforms: {} };
+    const settings = state?.settings as { plugins?: { [key: string]: any } } | undefined;
+    const config = settings?.plugins?.["forum-analyzer"];
+    if (!config) {
+        elizaLogger.error('[ForumAnalyzer] Plugin configuration not found in state.settings.plugins["forum-analyzer"]');
+        throw new Error('Forum analyzer plugin configuration not found. Please check your configuration.');
+    }
+    return config as ForumAnalyzerConfig;
 }
 
 async function fetchPosts(platform: string, config: ForumAnalyzerConfig): Promise<ForumPost[]> {
@@ -28,15 +34,30 @@ async function fetchPosts(platform: string, config: ForumAnalyzerConfig): Promis
     
     try {
         let client;
+        const platformConfig = config.platforms[platform];
+        
+        if (!platformConfig) {
+            throw new Error(`Platform ${platform} is not configured. Please check your configuration.`);
+        }
+
         switch (platform) {
             case 'discourse':
-                client = new DiscourseClient(config.platforms.discourse);
+                if (!platformConfig.url) {
+                    throw new Error('Discourse platform requires a forum URL in configuration.');
+                }
+                client = new DiscourseClient(platformConfig);
                 break;
             case 'discord':
-                client = new DiscordClient(config.platforms.discord);
+                if (!platformConfig.token || !platformConfig.channels?.length) {
+                    throw new Error('Discord platform requires a token and at least one channel ID.');
+                }
+                client = new DiscordClient(platformConfig);
                 break;
             case 'commonwealth':
-                client = new CommonwealthClient(config.platforms.commonwealth);
+                if (!platformConfig.space) {
+                    throw new Error('Commonwealth platform requires a space name in configuration.');
+                }
+                client = new CommonwealthClient(platformConfig);
                 break;
             default:
                 throw new Error(`Unsupported platform: ${platform}`);
@@ -47,14 +68,15 @@ async function fetchPosts(platform: string, config: ForumAnalyzerConfig): Promis
         return posts;
     } catch (error) {
         elizaLogger.error(`[ForumAnalyzer] Error fetching posts from ${platform}:`, error);
-        throw error;
+        throw new Error(`Failed to fetch posts from ${platform}: ${error.message}`);
     }
 }
 
 async function analyzePosts(posts: ForumPost[], options: ForumAnalyzerConfig["analysisOptions"]): Promise<DiscussionAnalysis[]> {
-    elizaLogger.debug(`[ForumAnalyzer] Analyzing ${posts.length} posts`);
+    elizaLogger.info(`[ForumAnalyzer] Starting batch analysis of ${posts.length} posts`);
     
-    const analyses = await Promise.all(posts.map(async post => {
+    const analyses = await Promise.all(posts.map(async (post, index) => {
+        elizaLogger.info(`[ForumAnalyzer] Analyzing post ${index + 1}/${posts.length}: "${post.title}"`);
         const analysis = await analyzeDiscussion(post, options);
         return analysis;
     }));
@@ -65,7 +87,13 @@ async function analyzePosts(posts: ForumPost[], options: ForumAnalyzerConfig["an
         analysis => analysis.proposalPotential.governanceRelevance >= threshold
     );
 
-    elizaLogger.info(`[ForumAnalyzer] Found ${potentialProposals.length} potential governance proposals`);
+    elizaLogger.info(`[ForumAnalyzer] Analysis complete:`, {
+        totalPosts: posts.length,
+        potentialProposals: potentialProposals.length,
+        threshold: threshold,
+        averageScore: potentialProposals.reduce((sum, a) => sum + a.proposalPotential.score, 0) / potentialProposals.length || 0
+    });
+    
     return potentialProposals;
 }
 
@@ -116,62 +144,92 @@ export const analyzeForumAction: Action = {
             content: { text: "Review Commonwealth discussions from last week" }
         }]
     ],
-    validate: async (runtime: IAgentRuntime, _message: Memory) => {
+    validate: async (runtime: InstanceType<typeof AgentRuntime>, _message: Memory) => {
         // Check if plugin is properly configured
         const plugin = runtime.plugins.find(p => p.name === "forum-analyzer");
-        return !!plugin;
+        if (!plugin) {
+            elizaLogger.error('[ForumAnalyzer] Plugin not found in runtime');
+            return false;
+        }
+        return true;
     },
     handler: async (
-        runtime: IAgentRuntime,
+        runtime: InstanceType<typeof AgentRuntime>,
         message: Memory,
         state?: State,
         options?: Record<string, unknown>,
         callback?: HandlerCallback
     ): Promise<boolean> => {
-        elizaLogger.info(`[ForumAnalyzer] Starting forum analysis for ${runtime.character.name}`);
+        elizaLogger.info(`[ForumAnalyzer] Starting forum analysis`, {
+            character: runtime.character.name,
+            messageId: message.id
+        });
         
         try {
-            const platforms = getPlatformsFromState(state);
-            elizaLogger.debug(`[ForumAnalyzer] Detected platforms: ${Object.keys(platforms).join(', ')}`);
+            if (!state) {
+                throw new Error('State is required for forum analysis');
+            }
 
-            const allAnalyses: DiscussionAnalysis[] = [];
+            const config = getPlatformsFromState(state);
+            const platforms = Object.keys(config.platforms);
+            elizaLogger.info(`[ForumAnalyzer] Configured platforms: ${platforms.join(', ')}`);
 
-            for (const [platform, config] of Object.entries(platforms)) {
-                elizaLogger.info(`[ForumAnalyzer] Analyzing platform: ${platform}`);
+            if (platforms.length === 0) {
+                throw new Error('No platforms configured in forum analyzer plugin');
+            }
+
+            // Start with Discourse platform first since it's configured for public access
+            if (config.platforms.discourse) {
+                elizaLogger.info(`[ForumAnalyzer] Processing Discourse platform`, {
+                    url: config.platforms.discourse.url,
+                    options: config.analysisOptions
+                });
                 
                 try {
-                    const posts = await fetchPosts(platform, config);
-                    elizaLogger.debug(`[ForumAnalyzer] Fetched ${posts.length} posts from ${platform}`);
+                    const posts = await fetchPosts('discourse', config);
+                    elizaLogger.info(`[ForumAnalyzer] Retrieved ${posts.length} posts from Discourse`);
+                    
+                    if (posts.length === 0) {
+                        await callback({
+                            text: "No posts found on the Discourse forum. Please check forum access and configuration.",
+                            action: "COMPLETE"
+                        });
+                        return false;
+                    }
+                    
+                    // Provide progress update
+                    await callback({
+                        text: `Starting analysis of ${posts.length} Discourse forum posts...`,
+                        action: "CONTINUE"
+                    });
                     
                     const analyses = await analyzePosts(posts, config.analysisOptions);
-                    allAnalyses.push(...analyses);
                     
-                    // Provide immediate feedback for this platform
+                    // Provide final summary
                     await callback({
-                        text: `Analyzed ${platform}: Found ${analyses.length} potential proposals.`,
-                        action: "CONTINUE"
+                        text: formatAnalysisResponse(analyses),
+                        action: "COMPLETE",
+                        data: { analyses }
                     });
+                    
+                    return true;
                 } catch (error) {
-                    elizaLogger.error(`[ForumAnalyzer] Error analyzing ${platform}:`, error);
-                    await callback({
-                        text: `Error analyzing ${platform}: ${error.message}`,
-                        action: "CONTINUE"
+                    elizaLogger.error(`[ForumAnalyzer] Error analyzing Discourse forum:`, {
+                        error: error.message,
+                        url: config.platforms.discourse.url
                     });
+                    throw error;
                 }
             }
             
-            // Provide final summary and options
-            await callback({
-                text: formatAnalysisResponse(allAnalyses),
-                action: "COMPLETE",
-                data: { analyses: allAnalyses }
-            });
-            
-            elizaLogger.success(`[ForumAnalyzer] Completed forum analysis for all platforms`);
-            return true;
-        } catch (error) {
-            elizaLogger.error(`[ForumAnalyzer] Error in forum analysis:`, error);
             return false;
+        } catch (error) {
+            elizaLogger.error(`[ForumAnalyzer] Fatal error during forum analysis:`, {
+                error: error.message,
+                character: runtime.character.name,
+                messageId: message.id
+            });
+            throw error;
         }
     }
 };  

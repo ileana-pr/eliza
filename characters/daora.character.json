@@ -13,11 +13,11 @@
                         "url": "https://forum.decentraland.org",
                         "usePublicScraping": true,
                         "fetchOptions": {
-                            "maxPosts": 100,
+                            "maxPosts": 25,
                             "includeReplies": true,
                             "fetchFullThread": true,
-                            "cacheTimeout": 300,
-                            "scrapingDelay": 500
+                            "cacheTimeout": 600,
+                            "scrapingDelay": 3000
                         }
                     },
                     "discord": {

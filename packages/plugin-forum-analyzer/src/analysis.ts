@@ -40,31 +40,51 @@ const GOVERNANCE_KEYWORDS = [
 ];
 
 export async function analyzeDiscussion(post: ForumPost, options: AnalysisOptions = {}): Promise<DiscussionAnalysis> {
-    elizaLogger.info(`[Analysis] Starting analysis of post: ${post.title}`);
-    elizaLogger.debug(`[Analysis] Analysis options:`, options);
+    elizaLogger.info(`[Analysis] Starting analysis for post "${post.title}" (ID: ${post.id})`);
+    elizaLogger.debug(`[Analysis] Configuration:`, {
+        platform: post.platform,
+        contentLength: post.content.length,
+        options: {
+            proposalThreshold: options.proposalThreshold || 0.7,
+            sentimentAnalysis: !!options.sentimentAnalysis,
+            keywordExtraction: !!options.keywordExtraction
+        }
+    });
 
     try {
-        // Track each step of analysis
-        elizaLogger.debug(`[Analysis] Extracting topics and stakeholders`);
+        // Track each step of analysis with clear progress indicators
+        elizaLogger.info(`[Analysis] Step 1/4: Extracting topics and stakeholders`);
         const topics = await extractTopics(post.content);
         const stakeholders = await identifyStakeholders(post.content);
+        elizaLogger.debug(`[Analysis] Found ${topics.length} topics and ${stakeholders.length} stakeholders`);
         
-        elizaLogger.debug(`[Analysis] Evaluating proposal potential`);
+        elizaLogger.info(`[Analysis] Step 2/4: Evaluating proposal potential`);
         const proposalPotential = await evaluateProposalPotential(post, options);
+        elizaLogger.info(`[Analysis] Proposal score: ${(proposalPotential.score * 100).toFixed(1)}% (${proposalPotential.type})`);
         
-        elizaLogger.debug(`[Analysis] Analyzing sentiment`);
+        elizaLogger.info(`[Analysis] Step 3/4: Analyzing sentiment`);
         const sentiment = options.sentimentAnalysis ? await analyzeSentiment(post.content) : undefined;
+        if (sentiment) {
+            elizaLogger.debug(`[Analysis] Sentiment analysis:`, {
+                score: sentiment.score,
+                label: sentiment.label
+            });
+        }
         
-        elizaLogger.debug(`[Analysis] Extracting keywords`);
+        elizaLogger.info(`[Analysis] Step 4/4: Extracting keywords`);
         const keywords = options.keywordExtraction ? await extractKeywords(post.content) : undefined;
+        if (keywords) {
+            elizaLogger.debug(`[Analysis] Extracted ${keywords.length} relevant keywords`);
+        }
 
-        elizaLogger.info(`[Analysis] Completed analysis for post: ${post.title}`);
-        elizaLogger.debug(`[Analysis] Results:`, {
-            topics: topics.length,
-            stakeholders: stakeholders.length,
+        elizaLogger.info(`[Analysis] Analysis complete for "${post.title}"`);
+        elizaLogger.debug(`[Analysis] Summary:`, {
             proposalScore: proposalPotential.score,
-            hasSentiment: !!sentiment,
-            keywordCount: keywords?.length
+            governanceRelevance: proposalPotential.governanceRelevance,
+            consensusLevel: proposalPotential.consensus.level,
+            topicCount: topics.length,
+            stakeholderCount: stakeholders.length,
+            keywordCount: keywords?.length || 0
         });
 
         return {
@@ -78,7 +98,11 @@ export async function analyzeDiscussion(post: ForumPost, options: AnalysisOption
             keywords
         };
     } catch (error) {
-        elizaLogger.error(`[Analysis] Error analyzing post ${post.title}:`, error);
+        elizaLogger.error(`[Analysis] Error analyzing post "${post.title}":`, {
+            error: error.message,
+            postId: post.id,
+            platform: post.platform
+        });
         throw error;
     }
 }

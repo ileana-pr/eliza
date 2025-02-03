@@ -23,6 +23,10 @@ interface TopicMetadata {
   categoryName: string;
   tags: string[];
   lastActivity: Date;
+  isSticky?: boolean;
+  isLocked?: boolean;
+  participantCount?: number;
+  lastEditedAt?: Date;
 }
 
 export class DiscourseClient {
@@ -76,73 +80,144 @@ export class DiscourseClient {
       views: parseInt($topic.find('.views').text().trim()) || 0,
       categoryName: $topic.find('.category-name').text().trim(),
       tags: $topic.find('.discourse-tag').map((_, el) => $(el).text().trim()).get(),
-      lastActivity: new Date($topic.find('.last-activity-time').attr('data-time') || Date.now())
+      lastActivity: new Date($topic.find('.last-activity-time').attr('data-time') || Date.now()),
+      isSticky: $topic.find('.topic-status .pinned').length > 0,
+      isLocked: $topic.find('.topic-status .locked').length > 0,
+      participantCount: parseInt($topic.find('.participant-count').text().trim()) || 0,
+      lastEditedAt: new Date($topic.find('.post-info.edits').attr('title') || Date.now())
     };
   }
 
   private async scrapeTopicPage(url: string): Promise<ForumPost | null> {
+    elizaLogger.info(`[Discourse] Scraping topic page: ${url}`);
+    
     try {
-      const response = await axios.get(url);
-      const $ = load(response.data);
-      
-      // Extract main post content
-      const mainPost = $('.topic-post:first-child');
-      const title = $('.fancy-title').text().trim();
-      const content = mainPost.find('.cooked').text().trim();
-      const author = mainPost.find('.username').text().trim();
-      const timestamp = mainPost.find('.post-date').attr('data-time') || '';
-      const replyCount = $('.post-count').text().trim();
-      const likeCount = mainPost.find('.like-count').text().trim();
-      
-      // Extract additional metadata
-      const category = $('.category-name').text().trim();
-      const tags = $('.discourse-tags .discourse-tag').map((_, el) => $(el).text().trim()).get();
-      const views = parseInt($('.views-count').text().trim()) || 0;
-      const isSticky = $('.topic-status .pinned').length > 0;
-      const isLocked = $('.topic-status .locked').length > 0;
-      const participantCount = new Set($('.topic-post .username').map((_, el) => $(el).text().trim()).get()).size;
-      
-      if (!title || !content) return null;
-
-      // Get replies if enabled
-      const replies: { author: string; content: string; timestamp: Date }[] = [];
-      if (this.fetchOptions.includeReplies) {
-        $('.topic-post:not(:first-child)').each((_, el) => {
-          const $reply = $(el);
-          replies.push({
-            author: $reply.find('.username').text().trim(),
-            content: $reply.find('.cooked').text().trim(),
-            timestamp: new Date($reply.find('.post-date').attr('data-time') || '')
-          });
-        });
-      }
-
-      return {
-        id: url.split('/').pop() || '',
-        platform: 'discourse',
-        title,
-        content,
-        author,
-        timestamp: new Date(timestamp),
-        url,
-        category,
-        tags,
-        views,
-        replies: parseInt(replyCount) || 0,
-        reactions: {
-          likes: parseInt(likeCount) || 0,
-        },
-        threadReplies: this.fetchOptions.includeReplies ? replies : undefined,
-        metadata: {
-          isSticky,
-          isLocked,
-          participantCount,
-          lastEditedAt: new Date(mainPost.find('.post-info.edits').attr('title') || timestamp)
+        const response = await axios.get(url);
+        const $ = load(response.data);
+        
+        const title = $('.fancy-title').text().trim();
+        const mainPost = $('.topic-post:first-child');
+        const author = mainPost.find('.username').text().trim();
+        const timestamp = mainPost.find('.post-date').attr('data-time') || '';
+        const content = mainPost.find('.cooked').text().trim();
+        const category = $('.category-name').text().trim();
+        const tags = $('.discourse-tag').map((_, el) => $(el).text().trim()).get();
+        const replyCount = $('.posts-count').text().trim();
+        const likeCount = mainPost.find('.like-count').text().trim();
+        const views = parseInt($('.views').text().trim()) || 0;
+        
+        const isSticky = $('.topic-status .pinned').length > 0;
+        const isLocked = $('.topic-status .locked').length > 0;
+        const participantCount = $('.participant-count').text().trim();
+        
+        let replies;
+        if (this.fetchOptions.includeReplies) {
+            elizaLogger.debug(`[Discourse] Fetching replies for topic: ${title}`);
+            replies = await this.fetchTopicReplies(url);
         }
-      };
+        
+        elizaLogger.debug(`[Discourse] Topic details:`, {
+            title,
+            author,
+            category,
+            tags: tags.length,
+            replies: replyCount,
+            views,
+            isSticky,
+            isLocked,
+            participantCount
+        });
+
+        return {
+            id: url.split('/').pop() || '',
+            platform: 'discourse',
+            title,
+            content,
+            author,
+            timestamp: new Date(timestamp),
+            url,
+            category,
+            tags,
+            views,
+            replies: parseInt(replyCount) || 0,
+            reactions: {
+                likes: parseInt(likeCount) || 0,
+            },
+            threadReplies: this.fetchOptions.includeReplies ? replies : undefined,
+            metadata: {
+                isSticky,
+                isLocked,
+                participantCount: parseInt(participantCount) || 0,
+                lastEditedAt: new Date(mainPost.find('.post-info.edits').attr('title') || timestamp)
+            }
+        };
     } catch (error) {
-      elizaLogger.error(`[DISCOURSE] Error scraping topic page ${url}:`, error);
-      return null;
+        elizaLogger.error(`[Discourse] Error scraping topic page:`, {
+            url,
+            error: error.message,
+            status: error.response?.status,
+            statusText: error.response?.statusText
+        });
+        return null;
+    }
+  }
+
+  private async scrapeTopicElement($: any, el: any): Promise<ForumPost | null> {
+    try {
+        const $topic = $(el);
+        const title = $topic.find('.topic-title').text().trim();
+        elizaLogger.debug(`[Discourse] Scraping topic element: "${title}"`);
+        
+        const topicUrl = $topic.find('.topic-title a').attr('href');
+        const author = $topic.find('.topic-author').text().trim();
+        const timestamp = $topic.find('.topic-date').attr('data-time');
+        const category = $topic.find('.topic-category').text().trim();
+        const tags = $topic.find('.discourse-tag').map((_, tag) => $(tag).text().trim()).get();
+        const replyCount = $topic.find('.topic-replies').text().trim();
+        const likeCount = $topic.find('.topic-likes').text().trim();
+        const views = parseInt($topic.find('.topic-views').text().trim()) || 0;
+        
+        const metadata = await this.scrapeTopicMetadata($, el);
+        
+        elizaLogger.debug(`[Discourse] Topic element details:`, {
+            title,
+            author,
+            category,
+            tags: tags.length,
+            replies: replyCount,
+            views,
+            lastActivity: metadata.lastActivity
+        });
+
+        const post: ForumPost = {
+            id: topicUrl?.split('/').pop() || '',
+            platform: 'discourse',
+            title,
+            content: '', // Content will be fetched separately if needed
+            author,
+            timestamp: new Date(timestamp || Date.now()),
+            url: topicUrl || '',
+            category,
+            tags,
+            views,
+            replies: parseInt(replyCount) || 0,
+            reactions: {
+                likes: parseInt(likeCount) || 0
+            },
+            metadata: {
+                lastActivity: metadata.lastActivity
+            }
+        };
+
+        elizaLogger.debug(`[Discourse] Successfully scraped topic element`);
+        return post;
+        
+    } catch (error) {
+        elizaLogger.error(`[Discourse] Error scraping topic element:`, {
+            error: error.message,
+            element: $(el).html()?.substring(0, 100) + '...'
+        });
+        return null;
     }
   }
 
@@ -347,76 +422,6 @@ export class DiscourseClient {
     }
   }
 
-  private async scrapeTopicElement($: any, el: any): Promise<ForumPost | null> {
-    try {
-      const $el = $(el);
-      
-      // Update selector to match Decentraland's forum structure
-      const titleEl = $el.find('.title.raw-link.raw-topic-link');
-      const title = titleEl.text().trim();
-      const link = titleEl.attr('href');
-      
-      elizaLogger.debug('[DISCOURSE] Found topic:', { title, link });
-      
-      if (!link) {
-        elizaLogger.debug('[DISCOURSE] No link found for topic');
-        return null;
-      }
-  
-      // Handle both relative and absolute URLs
-      const fullUrl = link.startsWith('http') ? link : `${this.baseUrl}${link}`;
-      
-      // Get the full topic content
-      const response = await axios.get(fullUrl);
-      const $topic = load(response.data);
-      
-      // Extract main post content
-      const mainPost = $topic('.topic-post:first-child');
-      const content = mainPost.find('.cooked').text().trim();
-      const author = mainPost.find('.username').text().trim();
-      const timestamp = mainPost.find('.post-date').attr('data-time') || '';
-      
-      // Extract metadata
-      const category = $topic('.category-name').text().trim();
-      const tags = $topic('.discourse-tags .discourse-tag').map((_, el) => $(el).text().trim()).get();
-      const views = parseInt($topic('.views-count').text().trim()) || 0;
-      const replyCount = $topic('.post-count').text().trim();
-      const likeCount = mainPost.find('.like-count').text().trim();
-  
-      const post: ForumPost = {
-        id: fullUrl.split('/').pop() || '',
-        platform: 'discourse',
-        title,
-        content,
-        author,
-        timestamp: new Date(timestamp),
-        url: fullUrl,
-        category,
-        tags,
-        views,
-        replies: parseInt(replyCount) || 0,
-        reactions: {
-          likes: parseInt(likeCount) || 0,
-        },
-        metadata: {
-          isSticky: $topic('.topic-status .pinned').length > 0,
-          isLocked: $topic('.topic-status .locked').length > 0,
-          participantCount: new Set($topic('.topic-post .username').map((_, el) => $(el).text().trim()).get()).size
-        }
-      };
-  
-      elizaLogger.debug(`[DISCOURSE] Successfully scraped topic: ${title}`);
-      return post;
-      
-    } catch (error) {
-      elizaLogger.error('[DISCOURSE] Error scraping topic:', {
-        error: error.message,
-        element: $(el).html()?.substring(0, 200)
-      });
-      return null;
-    }
-  }
-
   private async getCategoryName(categoryId: number): Promise<string | undefined> {
     try {
       const response = await axios.get(`${this.baseUrl}/c/${categoryId}/show.json`);
@@ -426,38 +431,59 @@ export class DiscourseClient {
     }
   }
 
+  private async fetchTopicReplies(url: string) {
+    try {
+        const response = await axios.get(url);
+        const $ = load(response.data);
+        
+        const replies: { author: string; content: string; timestamp: Date }[] = [];
+        $('.topic-post:not(:first-child)').each((_, el) => {
+            const $reply = $(el);
+            replies.push({
+                author: $reply.find('.username').text().trim(),
+                content: $reply.find('.cooked').text().trim(),
+                timestamp: new Date($reply.find('.post-date').attr('data-time') || '')
+            });
+        });
+        
+        return replies;
+    } catch (error) {
+        elizaLogger.error(`[Discourse] Error fetching topic replies:`, {
+            url,
+            error: error.message
+        });
+        return [];
+    }
+  }
+
   async getPosts(options: {
     timeframe?: string;
     category?: string;
     limit?: number;
   } = {}): Promise<ForumPost[]> {
-    elizaLogger.info("\n[DISCOURSE] Starting to fetch posts from Discourse...");
-    
+    const cacheKey = this.getCacheKey(options);
+    const cachedData = await this.getFromCache(cacheKey);
+    if (cachedData) {
+      elizaLogger.debug(`[Discourse] Returning ${cachedData.length} posts from cache`);
+      return cachedData;
+    }
+
     try {
-      elizaLogger.info(`[Discourse] Starting to fetch posts from ${this.baseUrl}`);
-      elizaLogger.debug(`[Discourse] Fetch options:`, options);
+      elizaLogger.info(`[Discourse] Fetching posts from ${this.baseUrl} using ${this.usePublicScraping ? 'public scraping' : 'API'}`);
+      const posts = this.usePublicScraping
+        ? await this.getPostsViaScraping(options)
+        : await this.getPostsViaAPI(options);
 
-      // Add logging before each API call or scraping attempt
-      if (this.usePublicScraping) {
-        elizaLogger.debug(`[Discourse] Starting public scraping with delay: ${this.fetchOptions.scrapingDelay}ms`);
-      } else {
-        elizaLogger.debug(`[Discourse] Making API request with key ${this.apiKey ? 'present' : 'missing'}`);
-      }
-
-      let posts: ForumPost[];
-      if (this.usePublicScraping) {
-        posts = await this.getPostsViaScraping(options);
-      } else {
-        posts = await this.getPostsViaAPI(options);
-      }
-      
-      elizaLogger.info(`[Discourse] Successfully fetched ${posts.length} posts from forum`);
-      elizaLogger.debug(`[Discourse] Cache status: ${this.fetchOptions.cacheTimeout ? 'enabled' : 'disabled'}`);
-      
+      this.setCache(cacheKey, posts);
       return posts;
     } catch (error) {
-      elizaLogger.error(`[Discourse] Error fetching posts:`, error);
-      throw error;
+      elizaLogger.error(`[Discourse] Failed to fetch posts from ${this.baseUrl}:`, error);
+      if (this.usePublicScraping) {
+        elizaLogger.error('[Discourse] Public scraping failed. This could be due to rate limiting, blocked access, or forum configuration. Consider using API access instead.');
+      } else {
+        elizaLogger.error('[Discourse] API access failed. Please verify your API key and forum URL are correct.');
+      }
+      throw new Error(`Discourse platform error: ${error.message || 'Failed to fetch posts'}`);
     }
   }
 } 

@@ -18,6 +18,7 @@
         "exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
     },
     "dependencies": {
+        "@elizaos/plugin-forum-analyzer": "workspace:*",
         "@elizaos/adapter-supabase": "workspace:*",
         "@elizaos/adapter-pglite": "workspace:*",
         "@elizaos/adapter-postgres": "workspace:*",
@@ -49,7 +50,6 @@
         "@elizaos/plugin-bnb": "workspace:*",
         "@elizaos/plugin-bootstrap": "workspace:*",
         "@elizaos/plugin-di": "workspace:*",
-        "@elizaos/plugin-intiface": "workspace:*",
         "@elizaos/plugin-coinbase": "workspace:*",
         "@elizaos/plugin-coingecko": "workspace:*",
         "@elizaos/plugin-coinmarketcap": "workspace:*",
@@ -103,7 +103,6 @@
         "@elizaos/plugin-video-generation": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-dexscreener": "workspace:*",
-        "@elizaos/plugin-letzai": "workspace:*",
         "@elizaos/plugin-thirdweb": "workspace:*",
         "@elizaos/plugin-genlayer": "workspace:*",
         "@elizaos/plugin-tee-verifiable-log": "workspace:*",

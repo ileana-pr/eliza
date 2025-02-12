@@ -9,7 +9,7 @@
         "secrets": {
         }
     },
-    "plugins": ["@elizaos/plugin-forum-analyzer"],
+    "plugins": ["@elizaos/solana-meme-tracker"],
     "actions": {
         "ANALYZE_FORUM": {
             "triggers": [

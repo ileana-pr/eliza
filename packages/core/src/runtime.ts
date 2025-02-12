@@ -406,7 +406,7 @@ export class AgentRuntime implements IAgentRuntime {
         this.token = opts.token;
 
         this.plugins = [
-            ...(opts.character?.plugins ?? []),
+            ...(opts.character?.plugins?.filter((p): p is Plugin => typeof p === 'object' && p !== null) ?? []),
             ...(opts.plugins ?? []),
         ];
 

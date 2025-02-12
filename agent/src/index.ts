@@ -1,4 +1,5 @@
 import { PGLiteDatabaseAdapter } from "@elizaos/adapter-pglite";
+import { solanaMemeTrackerPlugin } from "@elizaos/plugin-solana-meme-tracker";
 import { PostgresDatabaseAdapter } from "@elizaos/adapter-postgres";
 import { QdrantDatabaseAdapter } from "@elizaos/adapter-qdrant";
 import { RedisClient } from "@elizaos/adapter-redis";

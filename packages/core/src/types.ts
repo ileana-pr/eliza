@@ -802,8 +802,8 @@ export type Character = {
     /** Supported client platforms */
     clients: Clients[];
 
-    /** Available plugins */
-    plugins: Plugin[];
+    /** Available plugins - can be either plugin names (strings) or Plugin objects */
+    plugins: string[] | Plugin[];
 
     /** Optional configuration */
     settings?: {

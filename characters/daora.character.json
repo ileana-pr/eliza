@@ -9,37 +9,7 @@
         "secrets": {
         }
     },
-    "plugins": ["@elizaos/solana-meme-tracker"],
-    "actions": {
-        "ANALYZE_FORUM": {
-            "triggers": [
-                "analyze.*forum.*discussion",
-                "analyze.*discussion",
-                "check.*forum",
-                "latest.*discussion",
-                "forum.*analysis",
-                "current.*discussion",
-                "governance.*topic",
-                "forum.*topic",
-                "summarize.*forum",
-                "summarize.*discussion",
-                "latest.*forum",
-                "show.*forum",
-                "show.*discussion",
-                "what.*forum",
-                "what.*discussion"
-            ],
-            "examples": [
-                "analyze the latest forum discussions",
-                "check recent governance topics",
-                "what are people discussing on the forum",
-                "can you summarize the latest forum discussions",
-                "show me the latest forum activity"
-            ],
-            "defaultResponse": "I'll analyze the forum discussions and provide a summary of key governance topics and sentiment.",
-            "priority": 1
-        }
-    },
+    "plugins": ["@elizaos/plugin-forum-analyzer"],
     "knowledge": [
         "DAO governance best practices",
         "Proposal writing and structuring",
@@ -101,8 +71,8 @@
         "Treasury management",
         "Voting systems",
         "Forum analysis",
-        "Consensus building"
-    ],
+        "Consensus building"   
+     ],
     "style": {
         "all": [
             "Analytical",
